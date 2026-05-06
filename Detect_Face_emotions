@@ -1,0 +1,77 @@
+import cv2
+import numpy as np
+from google.colab import files
+from google.colab.patches import cv2_imshow
+
+def analyze_emotions():
+    # 1. Upload the photo
+    print("Please upload your photo (jpg/png):")
+    uploaded = files.upload()
+    if not uploaded:
+        return
+
+    img_path = list(uploaded.keys())[0]
+    img = cv2.imread(img_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Load the detection models
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+    smile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_smile.xml')
+
+    faces = face_cascade.detectMultiScale(gray, 1.1, 6)
+
+    for (x, y, w, h) in faces:
+        # Define Regions
+        roi_gray = gray[y:y+h, x:x+w]
+        roi_color = img[y:y+h, x:x+w]
+
+        # Lowering 'minNeighbors' (the last number) makes detection easier
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5)
+        smiles = smile_cascade.detectMultiScale(roi_gray, 1.7, 15)
+
+        # Draw debug boxes so you can see if it's working
+        for (ex, ey, ew, eh) in eyes:
+            cv2.rectangle(roi_color, (ex, ey), (ex+ew, ey+eh), (255, 0, 0), 2) # Blue Eyes
+        for (sx, sy, sw, sh) in smiles:
+            cv2.rectangle(roi_color, (sx, sy), (sx+sw, sy+sh), (0, 255, 255), 2) # Yellow Smile
+
+        # --- LOGIC FOR MULTIPLE SCORES ---
+        found_eyes = len(eyes) >= 2
+        found_smile = len(smiles) > 0
+
+        # Logic for Happiness
+        happy_score = 90 if found_smile else 10
+
+        # Logic for Frustration/Stress
+        # High frustration usually means no smile + narrow/undetected eyes (squinting)
+        frustration_score = 80 if (not found_smile and not found_eyes) else 20
+
+        # Logic for Stress
+        # If eyes aren't found (blinking/looking down) + no smile
+        stress_score = 40 # Base score
+        if not found_eyes: stress_score += 30
+        if not found_smile: stress_score += 30
+        if found_smile: stress_score -= 20 # Smiling reduces stress score
+
+        # Ensure scores stay between 0-100
+        stress_score = max(0, min(100, stress_score))
+
+        # Display Results on Image
+        y0, dy = y - 80, 25
+        results = [
+            (f"Stress: {stress_score}%", (0, 0, 255)),
+            (f"Happy: {happy_score}%", (0, 255, 0)),
+            (f"Frustration: {frustration_score}%", (255, 255, 0))
+        ]
+
+        for i, (text, color) in enumerate(results):
+            cv2.putText(img, text, (x, y0 + i*dy), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+        cv2.rectangle(img, (x, y), (x+w, y+h), (255, 255, 255), 2)
+
+    cv2_imshow(img)
+    print("Analysis Complete.")
+
+# Run the function
+analyze_emotions()
